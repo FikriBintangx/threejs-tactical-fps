@@ -3,19 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Greybox Range: a three.js FPS starter</title>
+<title>StrikeCraft Tactical FPS: 5v5 Round-Based Defusal Shooter</title>
 <style>
-  /* Look plan: canvas, surface, hairline, ink, muted and one accent. Every colour below is one of the six. */
   :root {
-    --canvas: #14161a;
-    --surface: #1e2228;
-    --hairline: #2c323a;
-    --ink: #e9e6df;
-    --muted: #98a0a8;
+    --canvas: #12151a;
+    --surface: #1a1e26;
+    --hairline: #28303d;
+    --ink: #f0ede6;
+    --muted: #8b96a5;
     --accent: #f0a830;
-    --radius-panel: 4px;
-    --radius-control: 8px;
-    --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --ct-color: #4a90e2;
+    --t-color: #e2574a;
+    --font-ui: system-ui, -apple-system, sans-serif;
     --font-readout: ui-monospace, 'SF Mono', Menlo, monospace;
   }
   * { box-sizing: border-box; }
@@ -30,6 +29,26 @@
   #game, #game canvas { position: fixed; inset: 0; display: block; }
   #hud { position: fixed; inset: 0; pointer-events: none; }
 
+  /* TOP MATCH HEADER */
+  #match-bar {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    background: rgba(26, 30, 38, 0.85);
+    border: 1px solid var(--hairline);
+    padding: 8px 24px;
+    border-radius: 6px;
+    backdrop-filter: blur(8px);
+    font-family: var(--font-readout);
+  }
+  #team-score { font-size: 18px; font-weight: 700; letter-spacing: 0.05em; }
+  #round-timer { font-size: 20px; font-weight: 700; color: var(--accent); }
+
+  /* CROSSHAIR & HITMARKER */
   #crosshair { position: fixed; left: 50%; top: 50%; width: 22px; height: 22px; transform: translate(-50%, -50%); }
   #crosshair i { position: absolute; background: var(--ink); opacity: .85; }
   #crosshair i:nth-child(1) { left: 10px; top: 0; width: 2px; height: 7px; }
@@ -45,6 +64,7 @@
   #hitmarker i:nth-child(3) { top: 12px; left: 0; height: 2px; width: 8px; }
   #hitmarker i:nth-child(4) { top: 12px; right: 0; height: 2px; width: 8px; }
 
+  /* BOTTOM READOUTS */
   #ammo {
     position: fixed;
     right: 32px;
@@ -53,23 +73,23 @@
     align-items: baseline;
     gap: 8px;
     font-family: var(--font-readout);
-    font-size: 56px;
+    font-size: 48px;
     line-height: 1;
-    letter-spacing: -0.03em;
     color: var(--ink);
   }
-  #ammo.empty #ammo-mag { color: var(--accent); }
-  #ammo-reserve { font-size: 16px; letter-spacing: -0.01em; color: var(--muted); }
+  #ammo-reserve { font-size: 16px; color: var(--muted); }
 
-  #score {
+  #economy-hud {
     position: fixed;
     left: 32px;
     bottom: 24px;
     font-family: var(--font-readout);
-    font-size: 14px;
-    color: var(--muted);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
-  #score b { color: var(--ink); font-weight: 500; }
+  #player-money { font-size: 28px; font-weight: 700; color: #2ecc71; }
+  #score { font-size: 13px; color: var(--muted); }
 
   .overlay {
     position: fixed;
@@ -77,70 +97,51 @@
     display: grid;
     place-items: center;
     padding: 24px;
-    background: color-mix(in srgb, var(--canvas) 86%, transparent);
+    background: color-mix(in srgb, var(--canvas) 88%, transparent);
   }
   .overlay[hidden] { display: none; }
   .panel {
-    width: min(420px, 100%);
+    width: min(460px, 100%);
     padding: 32px;
     background: var(--surface);
     border: 1px solid var(--hairline);
-    border-radius: var(--radius-panel);
+    border-radius: 8px;
   }
-  .panel h1 {
-    margin: 0 0 8px;
-    font-size: 32px;
-    line-height: 1.15;
-    font-weight: 500;
-    letter-spacing: -0.02em;
-    text-wrap: balance;
-  }
-  .panel p {
-    margin: 0 0 24px;
-    max-width: 46ch;
-    font-size: 16px;
-    line-height: 1.5;
-    color: var(--muted);
-    text-wrap: pretty;
-  }
+  .panel h1 { margin: 0 0 8px; font-size: 28px; font-weight: 700; }
+  .panel p { margin: 0 0 24px; font-size: 15px; line-height: 1.5; color: var(--muted); }
   #play {
     font: inherit;
-    font-weight: 500;
-    padding: 12px 16px;
-    white-space: nowrap;
+    font-weight: 600;
+    padding: 12px 20px;
     border: 1px solid var(--accent);
-    border-radius: var(--radius-control);
+    border-radius: 6px;
     background: var(--accent);
     color: var(--canvas);
     cursor: pointer;
     transition: background-color 120ms ease;
   }
   #play:hover { background: var(--ink); border-color: var(--ink); }
-  #play:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   .keys {
-    margin: 24px 0 0;
+    margin: 20px 0 0;
     padding: 0;
     list-style: none;
     display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: 8px;
-    font-size: 14px;
+    font-size: 13px;
     color: var(--muted);
   }
   .keys li { display: flex; align-items: center; gap: 8px; }
   .keys kbd {
-    min-width: 24px;
+    min-width: 22px;
     padding: 2px 6px;
     border: 1px solid var(--hairline);
-    border-radius: var(--radius-panel);
+    border-radius: 4px;
     font-family: var(--font-readout);
-    font-size: 12px;
+    font-size: 11px;
     color: var(--ink);
     text-align: center;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    #hitmarker, #play { transition-duration: 0.01ms; }
   }
 </style>
 </head>
@@ -148,24 +149,31 @@
 <div id="game"></div>
 
 <div id="hud" aria-hidden="true">
+  <div id="match-bar">
+    <span id="team-score">CT 0 : 0 T</span>
+    <span id="round-timer">1:55</span>
+  </div>
   <div id="crosshair"><i></i><i></i><i></i><i></i></div>
   <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+  <div id="economy-hud">
+    <div id="player-money">$800</div>
+    <div id="score">Combat Points <b id="score-value">0</b></div>
+  </div>
   <div id="ammo"><span id="ammo-mag">30</span><span id="ammo-reserve">/ 90</span></div>
-  <div id="score">Score <b id="score-value">0</b></div>
 </div>
 
 <div id="overlay" class="overlay">
   <section class="panel" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
-    <h1 id="overlay-title">Greybox Range</h1>
-    <p id="overlay-copy">A plain room, one rifle and four targets. Click to play.</p>
-    <button id="play" type="button">Click to play</button>
+    <h1 id="overlay-title">StrikeCraft Tactical FPS v4</h1>
+    <p id="overlay-copy">Round-Based Tactical Shooter. Plant or Defuse C4 Bomb at Site A / B.</p>
+    <button id="play" type="button">Enter Combat (Buy Phase)</button>
     <ul class="keys">
-      <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move</li>
-      <li><kbd>Mouse</kbd> Look</li>
-      <li><kbd>Click</kbd> Fire</li>
-      <li><kbd>R</kbd> Reload</li>
-      <li><kbd>Ctrl</kbd> Crouch</li>
-      <li><kbd>Space</kbd> Jump</li>
+      <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Movement</li>
+      <li><kbd>Mouse</kbd> Precision Aim</li>
+      <li><kbd>L-Click</kbd> Firing</li>
+      <li><kbd>R</kbd> Magazine Reload</li>
+      <li><kbd>B</kbd> Economy Buy Menu</li>
+      <li><kbd>E</kbd> Plant / Defuse C4</li>
     </ul>
   </section>
 </div>

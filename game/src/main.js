@@ -9,6 +9,8 @@ import { createPlayer } from './player.js';
 import { createWeapon } from './weapon.js';
 import { createTargets } from './targets.js';
 import { createHud } from './hud.js';
+import { createTacticalGame } from './tactical.js';
+import { createBotSquad } from './bots.js';
 
 const FIXED_STEP = 1 / 60;
 const params = new URLSearchParams(window.location.search);
@@ -42,13 +44,16 @@ scene.add(camera);
 
 const world = createWorld(scene);
 const targets = createTargets(scene);
+const tactical = createTacticalGame(scene, world);
+const bots = createBotSquad(scene, world.colliders);
 const weapon = createWeapon(camera);
 const hud = createHud();
 const player = createPlayer(world.colliders);
 const input = createInput(renderer.domElement, onLockChange);
 const raycaster = new THREE.Raycaster();
 raycaster.far = 80;
-const shootables = world.shootables.concat(targets.hitMeshes);
+
+const shootables = world.shootables.concat(targets.hitMeshes, bots.hitMeshes);
 const direction = new THREE.Vector3();
 
 const body = player.state;
@@ -63,6 +68,8 @@ let lastTime = performance.now();
 
 hud.setAmmo(weapon.state.mag, weapon.state.reserve);
 hud.setScore(0);
+hud.setMatchState(tactical.state.roundTimer, tactical.state.money, tactical.state.tWins, tactical.state.ctWins, tactical.state.bombPlanted);
+
 hud.onPlay(() => {
   if (shot) return;
   if (cleared) restart();
@@ -74,6 +81,7 @@ function restart() {
   score = 0;
   elapsed = 0;
   targets.reset();
+  bots.reset();
   weapon.refill();
   hud.setScore(0);
   hud.setAmmo(weapon.state.mag, weapon.state.reserve);
@@ -114,20 +122,26 @@ function shoot(spread) {
   scene.updateMatrixWorld(true);
   raycaster.set(camera.position, direction);
   const hit = raycaster.intersectObjects(shootables, false)[0];
-  if (hit && hit.object.userData.target) {
-    const killed = targets.damage(hit.object, hit.object.userData.part === 'head' ? 100 : 34);
-    score += killed ? 100 : 10;
-    hud.setScore(score);
-    hud.hitMarker(killed, markerHoldMs);
-    if (targets.remaining() === 0 && !cleared) {
-      cleared = true;
-      hud.showOverlay('end', score);
-      if (document.pointerLockElement) document.exitPointerLock();
+  if (hit) {
+    if (hit.object.userData.target) {
+      const killed = targets.damage(hit.object, hit.object.userData.part === 'head' ? 100 : 34);
+      score += killed ? 100 : 10;
+      tactical.state.money += killed ? 300 : 50;
+      hud.setScore(score);
+      hud.hitMarker(killed, markerHoldMs);
+    } else if (hit.object.userData.botId !== undefined) {
+      const isHead = hit.object.userData.part === 'head';
+      const killed = bots.damageBot(hit.object, isHead ? 100 : 34);
+      score += killed ? 300 : 40;
+      tactical.state.money += killed ? 600 : 100;
+      hud.setScore(score);
+      hud.hitMarker(killed, markerHoldMs);
     }
   }
   weapon.pullTrigger();
   player.recoil(0.009 + random() * 0.004, (random() * 2 - 1) * 0.004);
   hud.setAmmo(weapon.state.mag, weapon.state.reserve);
+  hud.setMatchState(tactical.state.roundTimer, tactical.state.money, tactical.state.tWins, tactical.state.ctWins, tactical.state.bombPlanted);
   return true;
 }
 
@@ -136,6 +150,9 @@ function step(dt) {
   player.step(dt, input.state.keys);
   weapon.step(dt);
   targets.step(dt, elapsed);
+  bots.step(dt, body.position);
+  tactical.step(dt);
+  hud.setMatchState(tactical.state.roundTimer, tactical.state.money, tactical.state.tWins, tactical.state.ctWins, tactical.state.bombPlanted);
 }
 
 function frame(now) {
@@ -169,7 +186,7 @@ function runShot(name) {
   body.pitch = 0;
   body.yaw = 0;
   if (name === 'play' || name === 'end') {
-    body.position.set(0, 0, -5);
+    body.position.set(0, 0, -4.5);
     settle(20);
     const count = name === 'play' ? 1 : targets.items.length;
     for (let index = 0; index < count; index += 1) {
@@ -186,6 +203,7 @@ function runShot(name) {
       shoot(0);
       settle(1);
     } else {
+      tactical.plantBomb('A', new THREE.Vector3(-6.5, 0, -6.5));
       settle(40);
     }
   } else {
@@ -196,6 +214,7 @@ function runShot(name) {
   }
   hud.setScore(score);
   hud.setAmmo(weapon.state.mag, weapon.state.reserve);
+  hud.setMatchState(tactical.state.roundTimer, tactical.state.money, tactical.state.tWins, tactical.state.ctWins, tactical.state.bombPlanted);
   paintTwiceThenReady();
 }
 
